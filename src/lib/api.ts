@@ -101,6 +101,7 @@ export async function createActivity(activity: {
   title: string;
   description?: string;
   frequency: Frequency;
+  duration_minutes?: number;
   category_id?: string;
   target_count?: number;
   start_date?: string;
@@ -115,6 +116,7 @@ export async function createActivity(activity: {
       title: activity.title,
       description: activity.description || null,
       frequency: activity.frequency,
+      duration_minutes: activity.duration_minutes || null,
       category_id: activity.category_id || null,
       target_count: activity.target_count || 1,
       start_date: activity.start_date || formatDate(new Date()),

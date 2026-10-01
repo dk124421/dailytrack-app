@@ -30,6 +30,12 @@ export default function ActivityCard({
 }: ActivityCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  
+  // Timer state
+  const isShortTerm = activity.frequency === 'short_term';
+  const durationSecs = (activity.duration_minutes || 15) * 60;
+  const [timeLeft, setTimeLeft] = useState(durationSecs);
+  const [isRunning, setIsRunning] = useState(false);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -41,16 +47,68 @@ export default function ActivityCard({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isRunning && timeLeft > 0) {
+      timer = setInterval(() => setTimeLeft((t) => t - 1), 1000);
+    } else if (isRunning && timeLeft === 0) {
+      setIsRunning(false);
+      onToggle(activity.id, true);
+      
+      // Notify
+      if ('Notification' in window) {
+        if (Notification.permission === 'granted') {
+          new Notification('Time is up! ⏳', { body: `Task "${activity.title}" is complete.` });
+        } else if (Notification.permission !== 'denied') {
+          Notification.requestPermission().then((permission) => {
+            if (permission === 'granted') {
+              new Notification('Time is up! ⏳', { body: `Task "${activity.title}" is complete.` });
+            }
+          });
+        }
+      }
+    }
+    return () => clearInterval(timer);
+  }, [isRunning, timeLeft, activity.id, activity.title, onToggle]);
+
+  const toggleTimer = () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    setIsRunning(!isRunning);
+  };
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
   return (
     <div
       className={`card p-4 flex items-center gap-3 animate-fade-in transition-all duration-300 ${
         completed ? 'opacity-80' : ''
       }`}
     >
-      <ActivityCheckbox
-        checked={completed}
-        onToggle={() => onToggle(activity.id, !completed)}
-      />
+      {!isShortTerm ? (
+        <ActivityCheckbox
+          checked={completed}
+          onToggle={() => onToggle(activity.id, !completed)}
+        />
+      ) : (
+        <button
+          onClick={completed ? undefined : toggleTimer}
+          className={`w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl font-bold text-xs transition-colors ${
+            completed 
+              ? 'bg-green-100 text-green-600'
+              : isRunning 
+                ? 'bg-red-100 text-red-500 animate-pulse'
+                : 'bg-primary-100 text-primary-600'
+          }`}
+        >
+          {completed ? 'Done' : formatTime(timeLeft)}
+        </button>
+      )}
 
       <div className="flex-1 min-w-0">
         <p
@@ -62,7 +120,7 @@ export default function ActivityCard({
         </p>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           <span className="text-xs text-neutral-400 font-medium">
-            {frequencyLabel[activity.frequency]}
+            {isShortTerm ? 'Timer' : frequencyLabel[activity.frequency as keyof typeof frequencyLabel]}
           </span>
           {activity.category && (
             <>
@@ -72,7 +130,7 @@ export default function ActivityCard({
               </span>
             </>
           )}
-          {streak > 0 && (
+          {streak > 0 && !isShortTerm && (
             <>
               <span className="text-neutral-200">•</span>
               <span className="text-xs font-semibold text-orange-500">

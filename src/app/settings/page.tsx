@@ -25,18 +25,37 @@ export default function SettingsPage() {
   const router = useRouter();
   const { showToast, ToastComponent } = useToast();
 
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editNameValue, setEditNameValue] = useState('');
+
   useEffect(() => {
     async function load() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data } = await supabase.from('profiles').select('name, email').eq('user_id', user.id).single();
-        setProfile(data || { name: user.email?.split('@')[0] || '', email: user.email || '' });
+        const profileData = data || { name: user.email?.split('@')[0] || '', email: user.email || '' };
+        setProfile(profileData);
+        setEditNameValue(profileData.name);
       }
       setCategories(await getCategories());
     }
     load();
   }, []);
+
+  async function handleUpdateName() {
+    if (!editNameValue.trim() || editNameValue.trim() === profile?.name) {
+      setIsEditingName(false);
+      return;
+    }
+    const { updateProfile } = await import('@/lib/api');
+    const updated = await updateProfile({ name: editNameValue.trim() });
+    if (updated) {
+      setProfile((prev) => prev ? { ...prev, name: updated.name } : null);
+      showToast('Profile updated', 'success');
+    }
+    setIsEditingName(false);
+  }
 
   async function handleAddCategory() {
     if (!newCatName.trim()) return;
@@ -91,12 +110,36 @@ export default function SettingsPage() {
         {/* Profile */}
         <div className="card p-5">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-400 to-indigo-500 flex items-center justify-center text-white text-xl font-bold">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-400 to-indigo-500 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
               {profile?.name?.charAt(0)?.toUpperCase() || '?'}
             </div>
-            <div>
-              <p className="font-bold text-neutral-800 text-base">{profile?.name || 'User'}</p>
-              <p className="text-sm text-neutral-400">{profile?.email}</p>
+            <div className="flex-1 min-w-0">
+              {isEditingName ? (
+                <div className="flex gap-2 mt-1">
+                  <input
+                    type="text"
+                    value={editNameValue}
+                    onChange={(e) => setEditNameValue(e.target.value)}
+                    autoFocus
+                    onKeyDown={(e) => e.key === 'Enter' && handleUpdateName()}
+                    className="flex-1 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                  />
+                  <button onClick={handleUpdateName} className="px-3 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium">Save</button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-neutral-800 text-base truncate">{profile?.name || 'User'}</p>
+                    <p className="text-sm text-neutral-400 truncate">{profile?.email}</p>
+                  </div>
+                  <button 
+                    onClick={() => { setEditNameValue(profile?.name || ''); setIsEditingName(true); }}
+                    className="text-xs font-medium text-primary-500 px-3 py-1.5 bg-primary-50 rounded-lg"
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

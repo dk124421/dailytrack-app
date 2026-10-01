@@ -17,6 +17,7 @@ export interface ActivityFormData {
   title: string;
   description: string;
   frequency: Frequency;
+  duration_minutes?: number;
   category_id: string;
   target_count: number;
   start_date: string;
@@ -26,6 +27,7 @@ const frequencies: { value: Frequency; label: string; desc: string }[] = [
   { value: 'daily', label: 'Daily', desc: 'Every day' },
   { value: 'weekly', label: 'Weekly', desc: 'This week' },
   { value: 'monthly', label: 'Monthly', desc: 'This month' },
+  { value: 'short_term', label: 'Timer', desc: 'Short task' },
 ];
 
 export default function ActivityForm({
@@ -38,6 +40,7 @@ export default function ActivityForm({
   const [title, setTitle] = useState(activity?.title ?? '');
   const [description, setDescription] = useState(activity?.description ?? '');
   const [frequency, setFrequency] = useState<Frequency>(activity?.frequency ?? 'daily');
+  const [durationMinutes, setDurationMinutes] = useState(activity?.duration_minutes ?? 15);
   const [categoryId, setCategoryId] = useState(activity?.category_id ?? '');
   const [targetCount, setTargetCount] = useState(activity?.target_count ?? 1);
   const [startDate, setStartDate] = useState(activity?.start_date ?? formatDate(new Date()));
@@ -56,6 +59,7 @@ export default function ActivityForm({
         title: title.trim(),
         description: description.trim(),
         frequency,
+        duration_minutes: frequency === 'short_term' ? durationMinutes : undefined,
         category_id: categoryId,
         target_count: targetCount,
         start_date: startDate,
@@ -112,13 +116,13 @@ export default function ActivityForm({
             <label className="block text-sm font-semibold text-neutral-700 mb-1.5">
               Frequency
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {frequencies.map((f) => (
                 <button
                   key={f.value}
                   type="button"
                   onClick={() => setFrequency(f.value)}
-                  className={`py-2.5 px-3 rounded-xl border-2 text-sm font-medium transition-all duration-150 ${
+                  className={`py-2 px-3 rounded-xl border-2 text-sm font-medium transition-all duration-150 ${
                     frequency === f.value
                       ? 'border-primary-500 bg-primary-50 text-primary-700'
                       : 'border-neutral-200 text-neutral-500 hover:border-neutral-300'
@@ -130,8 +134,36 @@ export default function ActivityForm({
             </div>
           </div>
 
+          {/* Duration for short term */}
+          {frequency === 'short_term' && (
+            <div>
+              <label className="block text-sm font-semibold text-neutral-700 mb-1.5">
+                Timer Duration (minutes)
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDurationMinutes(Math.max(1, durationMinutes - 5))}
+                  className="w-10 h-10 rounded-full border-2 border-neutral-200 flex items-center justify-center text-lg font-bold text-neutral-600 hover:border-primary-300 transition-colors"
+                >
+                  −
+                </button>
+                <span className="text-2xl font-bold text-neutral-800 w-12 text-center">
+                  {durationMinutes}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDurationMinutes(Math.min(120, durationMinutes + 5))}
+                  className="w-10 h-10 rounded-full border-2 border-neutral-200 flex items-center justify-center text-lg font-bold text-neutral-600 hover:border-primary-300 transition-colors"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Target count for weekly/monthly */}
-          {frequency !== 'daily' && (
+          {(frequency === 'weekly' || frequency === 'monthly') && (
             <div>
               <label className="block text-sm font-semibold text-neutral-700 mb-1.5">
                 Target ({frequency === 'weekly' ? 'times per week' : 'times per month'})

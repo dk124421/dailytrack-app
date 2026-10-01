@@ -1,4 +1,4 @@
-export type Frequency = 'daily' | 'weekly' | 'monthly';
+export type Frequency = 'daily' | 'weekly' | 'monthly' | 'short_term';
 
 export interface Profile {
   id: string;
@@ -24,6 +24,7 @@ export interface Activity {
   title: string;
   description: string | null;
   frequency: Frequency;
+  duration_minutes?: number | null;
   category_id: string | null;
   target_count: number;
   start_date: string;
