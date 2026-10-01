@@ -27,6 +27,7 @@ export default function SettingsPage() {
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState('');
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
 
   useEffect(() => {
     async function load() {
@@ -41,6 +42,9 @@ export default function SettingsPage() {
       setCategories(await getCategories());
     }
     load();
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(Notification.permission);
+    }
   }, []);
 
   async function handleUpdateName() {
@@ -210,13 +214,31 @@ export default function SettingsPage() {
             <ChevronRight size={16} className="text-neutral-300" />
           </button>
 
-          <div className="w-full flex items-center gap-3 px-5 py-4 border-b border-neutral-100 opacity-60">
-            <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
-              <Bell size={18} className="text-amber-500" />
+          <button
+            onClick={async () => {
+              if ('Notification' in window) {
+                const permission = await Notification.requestPermission();
+                setNotificationPermission(permission);
+                if (permission === 'granted') showToast('Notifications enabled! 🎉', 'success');
+                else if (permission === 'denied') showToast('Notifications blocked in browser settings', 'error');
+              } else {
+                showToast('Notifications not supported by your browser', 'info');
+              }
+            }}
+            className={`w-full flex items-center gap-3 px-5 py-4 border-b border-neutral-100 transition-colors ${notificationPermission === 'default' ? 'hover:bg-neutral-50 cursor-pointer' : ''}`}
+          >
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${notificationPermission === 'granted' ? 'bg-green-50' : 'bg-amber-50'}`}>
+              <Bell size={18} className={notificationPermission === 'granted' ? 'text-green-500' : 'text-amber-500'} />
             </div>
             <span className="flex-1 text-left text-sm font-medium text-neutral-700">Notifications</span>
-            <span className="text-xs text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded-full">Soon</span>
-          </div>
+            {notificationPermission === 'granted' ? (
+              <span className="text-xs font-medium text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Enabled</span>
+            ) : notificationPermission === 'denied' ? (
+              <span className="text-xs font-medium text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Blocked</span>
+            ) : (
+              <span className="text-xs font-medium text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">Enable</span>
+            )}
+          </button>
 
           <div className="w-full flex items-center gap-3 px-5 py-4">
             <div className="w-9 h-9 rounded-xl bg-neutral-100 flex items-center justify-center">
