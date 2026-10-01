@@ -138,26 +138,56 @@ export default function ActivityForm({
           {frequency === 'short_term' && (
             <div>
               <label className="block text-sm font-semibold text-neutral-700 mb-1.5">
-                Timer Duration (minutes)
+                Timer Duration
               </label>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setDurationMinutes(Math.max(1, durationMinutes - 5))}
-                  className="w-10 h-10 rounded-full border-2 border-neutral-200 flex items-center justify-center text-lg font-bold text-neutral-600 hover:border-primary-300 transition-colors"
-                >
-                  −
-                </button>
-                <span className="text-2xl font-bold text-neutral-800 w-12 text-center">
-                  {durationMinutes}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setDurationMinutes(Math.min(120, durationMinutes + 5))}
-                  className="w-10 h-10 rounded-full border-2 border-neutral-200 flex items-center justify-center text-lg font-bold text-neutral-600 hover:border-primary-300 transition-colors"
-                >
-                  +
-                </button>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="flex flex-col">
+                  <input
+                    type="number"
+                    min="0"
+                    value={Math.floor(durationMinutes / (24 * 60))}
+                    onChange={(e) => {
+                      const d = parseInt(e.target.value) || 0;
+                      const h = Math.floor((durationMinutes % (24 * 60)) / 60);
+                      const m = durationMinutes % 60;
+                      setDurationMinutes(d * 24 * 60 + h * 60 + m);
+                    }}
+                    className="px-3 py-2 rounded-lg border border-neutral-200 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                  />
+                  <span className="text-[10px] text-neutral-400 text-center mt-1 uppercase font-semibold">Days</span>
+                </div>
+                <div className="flex flex-col">
+                  <input
+                    type="number"
+                    min="0"
+                    max="23"
+                    value={Math.floor((durationMinutes % (24 * 60)) / 60)}
+                    onChange={(e) => {
+                      const d = Math.floor(durationMinutes / (24 * 60));
+                      const h = parseInt(e.target.value) || 0;
+                      const m = durationMinutes % 60;
+                      setDurationMinutes(d * 24 * 60 + h * 60 + m);
+                    }}
+                    className="px-3 py-2 rounded-lg border border-neutral-200 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                  />
+                  <span className="text-[10px] text-neutral-400 text-center mt-1 uppercase font-semibold">Hours</span>
+                </div>
+                <div className="flex flex-col">
+                  <input
+                    type="number"
+                    min="0"
+                    max="59"
+                    value={durationMinutes % 60}
+                    onChange={(e) => {
+                      const d = Math.floor(durationMinutes / (24 * 60));
+                      const h = Math.floor((durationMinutes % (24 * 60)) / 60);
+                      const m = parseInt(e.target.value) || 0;
+                      setDurationMinutes(d * 24 * 60 + h * 60 + m);
+                    }}
+                    className="px-3 py-2 rounded-lg border border-neutral-200 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                  />
+                  <span className="text-[10px] text-neutral-400 text-center mt-1 uppercase font-semibold">Minutes</span>
+                </div>
               </div>
             </div>
           )}

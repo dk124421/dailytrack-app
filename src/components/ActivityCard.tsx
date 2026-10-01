@@ -36,6 +36,23 @@ export default function ActivityCard({
   const durationSecs = (activity.duration_minutes || 15) * 60;
   const [timeLeft, setTimeLeft] = useState(durationSecs);
   const [isRunning, setIsRunning] = useState(false);
+  const storageKey = `timer_${activity.id}`;
+
+  useEffect(() => {
+    if (isShortTerm) {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const { endTime } = JSON.parse(saved);
+        const remaining = Math.floor((endTime - Date.now()) / 1000);
+        if (remaining > 0) {
+          setTimeLeft(remaining);
+          setIsRunning(true);
+        } else {
+          setTimeLeft(0);
+        }
+      }
+    }
+  }, [isShortTerm, storageKey]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -50,9 +67,18 @@ export default function ActivityCard({
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (isRunning && timeLeft > 0) {
-      timer = setInterval(() => setTimeLeft((t) => t - 1), 1000);
+      timer = setInterval(() => {
+        setTimeLeft((t) => {
+          if (t <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return t - 1;
+        });
+      }, 1000);
     } else if (isRunning && timeLeft === 0) {
       setIsRunning(false);
+      localStorage.removeItem(storageKey);
       onToggle(activity.id, true);
       
       // Notify
@@ -69,19 +95,32 @@ export default function ActivityCard({
       }
     }
     return () => clearInterval(timer);
-  }, [isRunning, timeLeft, activity.id, activity.title, onToggle]);
+  }, [isRunning, timeLeft, activity.id, activity.title, onToggle, storageKey]);
 
   const toggleTimer = () => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+    if (!isRunning) {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+      const endTime = Date.now() + (timeLeft === 0 ? durationSecs : timeLeft) * 1000;
+      localStorage.setItem(storageKey, JSON.stringify({ endTime }));
+      if (timeLeft === 0) setTimeLeft(durationSecs);
+      setIsRunning(true);
+    } else {
+      localStorage.removeItem(storageKey);
+      setIsRunning(false);
     }
-    setIsRunning(!isRunning);
   };
 
   const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60).toString().padStart(2, '0');
-    const s = (secs % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
+    const d = Math.floor(secs / (24 * 3600));
+    const h = Math.floor((secs % (24 * 3600)) / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = Math.floor(secs % 60);
+    
+    if (d > 0) return `${d}d ${h}h`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -98,7 +137,7 @@ export default function ActivityCard({
       ) : (
         <button
           onClick={completed ? undefined : toggleTimer}
-          className={`w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl font-bold text-xs transition-colors ${
+          className={`w-14 h-14 flex-shrink-0 flex items-center justify-center rounded-xl font-bold text-xs transition-colors ${
             completed 
               ? 'bg-green-100 text-green-600'
               : isRunning 
