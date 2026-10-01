@@ -82,13 +82,28 @@ export default function ActivityCard({
       onToggle(activity.id, true);
       
       // Notify
+      const showNotification = () => {
+        const title = 'Time is up! ⏳';
+        const options = { body: `Task "${activity.title}" is complete.`, icon: '/icons/icon-192x192.png' };
+        
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then((registration) => {
+            registration.showNotification(title, options);
+          }).catch(() => {
+            new Notification(title, options);
+          });
+        } else if ('Notification' in window) {
+          new Notification(title, options);
+        }
+      };
+
       if ('Notification' in window) {
         if (Notification.permission === 'granted') {
-          new Notification('Time is up! ⏳', { body: `Task "${activity.title}" is complete.` });
+          showNotification();
         } else if (Notification.permission !== 'denied') {
           Notification.requestPermission().then((permission) => {
             if (permission === 'granted') {
-              new Notification('Time is up! ⏳', { body: `Task "${activity.title}" is complete.` });
+              showNotification();
             }
           });
         }

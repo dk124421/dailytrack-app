@@ -25,8 +25,15 @@ export async function updateProfile(updates: Partial<Profile>): Promise<Profile 
 
   const { data } = await supabase
     .from('profiles')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('user_id', user.id)
+    .upsert({ 
+      user_id: user.id,
+      email: user.email || '',
+      name: user.email?.split('@')[0] || '',
+      ...updates, 
+      updated_at: new Date().toISOString() 
+    }, {
+      onConflict: 'user_id'
+    })
     .select()
     .single();
 
