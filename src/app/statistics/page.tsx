@@ -12,7 +12,7 @@ import { PageLoader } from '@/components/LoadingState';
 import { createClient } from '@/lib/supabase/client';
 import {
   formatDate, formatMonthYear, getWeekDays, getMonthDays,
-  calculateStreak, startOfMonth, endOfMonth, startOfWeek, endOfWeek, format
+  calculateStreak, startOfMonth, endOfMonth, startOfWeek, endOfWeek, format, getLogicalToday
 } from '@/lib/date-utils';
 import type { Activity, ActivityCompletion } from '@/lib/types';
 
@@ -29,7 +29,7 @@ export default function StatisticsPage() {
   const [allCompletions, setAllCompletions] = useState<ActivityCompletion[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const today = new Date();
+  const today = getLogicalToday();
 
   const loadData = useCallback(async () => {
     setLoading(true);

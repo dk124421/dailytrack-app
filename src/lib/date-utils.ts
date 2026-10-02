@@ -12,6 +12,7 @@ import {
   getDay,
   getDaysInMonth,
   parseISO,
+  subHours,
 } from 'date-fns';
 
 export function formatDate(date: Date | string): string {
@@ -34,8 +35,14 @@ export function formatMonthYear(date: Date | string): string {
   return format(d, 'MMMM yyyy');
 }
 
+export function getLogicalToday(): Date {
+  // If the time is before 4 AM, logical today is actually yesterday.
+  return subHours(new Date(), 4);
+}
+
 export function getGreeting(): string {
   const hour = new Date().getHours();
+  if (hour < 4) return 'Late Night';
   if (hour < 12) return 'Good Morning';
   if (hour < 17) return 'Good Afternoon';
   return 'Good Evening';
@@ -108,4 +115,4 @@ export function calculateStreak(
   return streak;
 }
 
-export { isToday, isSameDay, subDays, addDays, getDay, getDaysInMonth, parseISO, format, startOfMonth, endOfMonth, startOfWeek, endOfWeek };
+export { isToday, isSameDay, subDays, addDays, getDay, getDaysInMonth, parseISO, format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subHours };

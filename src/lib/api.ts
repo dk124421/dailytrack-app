@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import type { Activity, ActivityCompletion, Category, Profile, Frequency } from '@/lib/types';
-import { formatDate } from '@/lib/date-utils';
+import { formatDate, getLogicalToday } from '@/lib/date-utils';
 
 const supabase = createClient();
 
@@ -126,7 +126,7 @@ export async function createActivity(activity: {
       duration_minutes: activity.duration_minutes || null,
       category_id: activity.category_id || null,
       target_count: activity.target_count || 1,
-      start_date: activity.start_date || formatDate(new Date()),
+      start_date: activity.start_date || formatDate(getLogicalToday()),
       is_active: true,
     })
     .select('*, category:categories(*)')

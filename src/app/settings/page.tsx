@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   User, LogOut, Trash2, Share2, ChevronRight,
-  Bell, Shield, Info, CheckSquare, Plus
+  Bell, Shield, Info, CheckSquare, Plus, MessageSquare, X
 } from 'lucide-react';
 import BottomNavigation from '@/components/BottomNavigation';
 import DeleteConfirm from '@/components/DeleteConfirm';
@@ -21,6 +21,9 @@ export default function SettingsPage() {
   const [showNewCat, setShowNewCat] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [deletingCat, setDeletingCat] = useState<Category | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
   const { signOut } = useAuth();
   const router = useRouter();
   const { showToast, ToastComponent } = useToast();
@@ -100,6 +103,36 @@ export default function SettingsPage() {
     } else {
       await navigator.clipboard.writeText(appUrl);
       showToast('Link copied to clipboard!', 'success');
+    }
+  }
+
+  async function handleSendFeedback(e: React.FormEvent) {
+    e.preventDefault();
+    if (!feedbackMessage.trim()) return;
+
+    setFeedbackLoading(true);
+    try {
+      const res = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: profile?.name || 'Anonymous',
+          email: profile?.email || 'No email',
+          message: feedbackMessage.trim(),
+        }),
+      });
+
+      if (res.ok) {
+        showToast('Feedback sent successfully!', 'success');
+        setShowFeedback(false);
+        setFeedbackMessage('');
+      } else {
+        showToast('Failed to send feedback', 'error');
+      }
+    } catch {
+      showToast('An error occurred', 'error');
+    } finally {
+      setFeedbackLoading(false);
     }
   }
 
@@ -249,6 +282,17 @@ export default function SettingsPage() {
               <p className="text-xs text-neutral-400">DailyTrack v1.0.0</p>
             </div>
           </div>
+
+          <button
+            onClick={() => setShowFeedback(true)}
+            className="w-full flex items-center gap-3 px-5 py-4 border-t border-neutral-100 hover:bg-neutral-50 transition-colors"
+          >
+            <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center">
+              <MessageSquare size={18} className="text-purple-500" />
+            </div>
+            <span className="flex-1 text-left text-sm font-medium text-neutral-700">Send Feedback</span>
+            <ChevronRight size={16} className="text-neutral-300" />
+          </button>
         </div>
 
         {/* Sign Out */}
@@ -297,6 +341,44 @@ export default function SettingsPage() {
           }}
           onCancel={() => setShowDeleteAccount(false)}
         />
+      )}
+
+      {showFeedback && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowFeedback(false)}>
+          <div className="modal-content">
+            <div className="flex items-center justify-between p-5 border-b border-neutral-100">
+              <h2 className="text-lg font-bold text-neutral-800">Send Feedback</h2>
+              <button
+                onClick={() => setShowFeedback(false)}
+                className="p-2 rounded-full hover:bg-neutral-100 text-neutral-500 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSendFeedback} className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-neutral-700 mb-1.5">
+                  Your Message
+                </label>
+                <textarea
+                  value={feedbackMessage}
+                  onChange={(e) => setFeedbackMessage(e.target.value)}
+                  placeholder="Tell us what you think or report a bug..."
+                  required
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-xl border border-neutral-200 bg-white text-neutral-800 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-400 transition-all text-[15px] resize-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={feedbackLoading || !feedbackMessage.trim()}
+                className="w-full py-3.5 bg-primary-500 hover:bg-primary-600 disabled:bg-neutral-300 text-white font-semibold rounded-xl transition-all duration-200 text-[15px]"
+              >
+                {feedbackLoading ? 'Sending...' : 'Send Feedback'}
+              </button>
+            </form>
+          </div>
+        </div>
       )}
 
       {ToastComponent}

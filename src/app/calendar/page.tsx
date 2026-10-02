@@ -20,6 +20,7 @@ import {
   format,
   addDays,
   subDays,
+  getLogicalToday,
 } from '@/lib/date-utils';
 import { addMonths, subMonths } from 'date-fns';
 import type { Activity, ActivityCompletion, DayStatus } from '@/lib/types';
@@ -45,7 +46,7 @@ function getDayDotColor(status: DayStatus['status']) {
 }
 
 export default function CalendarPage() {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(getLogicalToday());
   const [activities, setActivities] = useState<Activity[]>([]);
   const [completions, setCompletions] = useState<ActivityCompletion[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -88,7 +89,7 @@ export default function CalendarPage() {
 
   function getDayStatus(date: Date): DayStatus {
     const dateStr = formatDate(date);
-    const today = new Date();
+    const today = getLogicalToday();
 
     // Only show status for past and today
     if (date > today && !isSameDay(date, today)) {

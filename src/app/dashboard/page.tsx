@@ -27,6 +27,7 @@ import {
   formatDisplayDate,
   getGreeting,
   calculateStreak,
+  getLogicalToday,
 } from '@/lib/date-utils';
 import type { Activity, Category } from '@/lib/types';
 
@@ -43,7 +44,7 @@ export default function DashboardPage() {
   const [userName, setUserName] = useState('');
   const { showToast, ToastComponent } = useToast();
 
-  const today = new Date();
+  const today = getLogicalToday();
   const todayStr = formatDate(today);
 
   const loadData = useCallback(async () => {

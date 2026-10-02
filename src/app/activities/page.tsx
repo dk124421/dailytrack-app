@@ -21,7 +21,7 @@ import {
   createCategory,
   getCompletionsForActivity,
 } from '@/lib/api';
-import { formatDate, calculateStreak } from '@/lib/date-utils';
+import { formatDate, calculateStreak, getLogicalToday } from '@/lib/date-utils';
 import type { Activity, Category } from '@/lib/types';
 
 type FilterType = 'all' | 'daily' | 'weekly' | 'monthly' | 'completed' | 'pending';
@@ -50,7 +50,7 @@ export default function ActivitiesPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const { showToast, ToastComponent } = useToast();
 
-  const todayStr = formatDate(new Date());
+  const todayStr = formatDate(getLogicalToday());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -64,7 +64,7 @@ export default function ActivitiesPage() {
     setCompletedIds(new Set(completions.map((c) => c.activity_id)));
 
     const streakMap: Record<string, number> = {};
-    const today = new Date();
+    const today = getLogicalToday();
     await Promise.all(
       acts
         .filter((a) => a.frequency === 'daily')

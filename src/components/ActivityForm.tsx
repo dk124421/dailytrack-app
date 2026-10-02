@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar } from 'lucide-react';
 import type { Activity, Category, Frequency } from '@/lib/types';
-import { formatDate } from '@/lib/date-utils';
+import { formatDate, getLogicalToday } from '@/lib/date-utils';
 
 interface ActivityFormProps {
   activity?: Activity | null;
@@ -43,7 +43,7 @@ export default function ActivityForm({
   const [durationMinutes, setDurationMinutes] = useState(activity?.duration_minutes ?? 15);
   const [categoryId, setCategoryId] = useState(activity?.category_id ?? '');
   const [targetCount, setTargetCount] = useState(activity?.target_count ?? 1);
-  const [startDate, setStartDate] = useState(activity?.start_date ?? formatDate(new Date()));
+  const [startDate, setStartDate] = useState(activity?.start_date ?? formatDate(getLogicalToday()));
   const [loading, setSaving] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [showNewCat, setShowNewCat] = useState(false);
