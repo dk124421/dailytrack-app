@@ -58,3 +58,10 @@ export interface DayStatus {
   percentage: number;
   status: 'all' | 'partial' | 'missed' | 'none';
 }
+
+export interface ActivityStats {
+  completed: number;
+  total: number;
+  percentage: number;
+  label: string;
+}

@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import type { Activity, ActivityCompletion, Category, Profile, Frequency } from '@/lib/types';
-import { formatDate, getLogicalToday } from '@/lib/date-utils';
+import { formatDate, getLogicalToday, isDateModifiable } from '@/lib/date-utils';
 
 const supabase = createClient();
 
@@ -200,6 +200,12 @@ export async function toggleCompletion(
   date: string,
   completed: boolean
 ): Promise<boolean> {
+  // Enforce rule: only today and yesterday can be modified
+  if (!isDateModifiable(date)) {
+    console.warn(`Date ${date} cannot be modified. Only today and yesterday are allowed.`);
+    return false;
+  }
+
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
@@ -241,4 +247,43 @@ export async function getDayCompletions(date: string): Promise<ActivityCompletio
     .eq('completed', true);
 
   return data || [];
+}
+
+export async function getActivityCompletionCounts(): Promise<Record<string, number>> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return {};
+
+  const { data } = await supabase
+    .from('activity_completions')
+    .select('activity_id')
+    .eq('user_id', user.id)
+    .eq('completed', true);
+
+  const counts: Record<string, number> = {};
+  (data || []).forEach((c: { activity_id: string }) => {
+    counts[c.activity_id] = (counts[c.activity_id] || 0) + 1;
+  });
+
+  return counts;
+}
+
+export async function getActivityCompletionDates(): Promise<Record<string, string[]>> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return {};
+
+  const { data } = await supabase
+    .from('activity_completions')
+    .select('activity_id, completion_date')
+    .eq('user_id', user.id)
+    .eq('completed', true);
+
+  const map: Record<string, string[]> = {};
+  (data || []).forEach((c: { activity_id: string; completion_date: string }) => {
+    if (!map[c.activity_id]) {
+      map[c.activity_id] = [];
+    }
+    map[c.activity_id].push(c.completion_date);
+  });
+
+  return map;
 }

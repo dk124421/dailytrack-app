@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, SlidersHorizontal } from 'lucide-react';
+import { Plus, Search, Clock } from 'lucide-react';
 import BottomNavigation from '@/components/BottomNavigation';
 import ActivityCard from '@/components/ActivityCard';
 import ActivityForm, { type ActivityFormData } from '@/components/ActivityForm';
@@ -10,7 +10,6 @@ import { SkeletonList } from '@/components/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import { useToast } from '@/components/Toast';
 import {
-  getActivities,
   getAllActivities,
   getCategories,
   getDayCompletions,
@@ -19,9 +18,17 @@ import {
   updateActivity,
   deleteActivity,
   createCategory,
-  getCompletionsForActivity,
+  getActivityCompletionDates,
 } from '@/lib/api';
-import { formatDate, calculateStreak, getLogicalToday } from '@/lib/date-utils';
+import {
+  formatDate,
+  formatShortDate,
+  formatDisplayDate,
+  calculateStreak,
+  getLogicalToday,
+  getLogicalYesterday,
+  getActivityStats,
+} from '@/lib/date-utils';
 import type { Activity, Category } from '@/lib/types';
 
 type FilterType = 'all' | 'daily' | 'weekly' | 'monthly' | 'completed' | 'pending';
@@ -36,9 +43,12 @@ const filters: { value: FilterType; label: string }[] = [
 ];
 
 export default function ActivitiesPage() {
+  const [selectedDay, setSelectedDay] = useState<'today' | 'yesterday'>('today');
   const [activities, setActivities] = useState<Activity[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [todayCompletedIds, setTodayCompletedIds] = useState<Set<string>>(new Set());
+  const [yesterdayCompletedIds, setYesterdayCompletedIds] = useState<Set<string>>(new Set());
+  const [completionDatesMap, setCompletionDatesMap] = useState<Record<string, string[]>>({});
   const [streaks, setStreaks] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>('all');
@@ -50,81 +60,150 @@ export default function ActivitiesPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const { showToast, ToastComponent } = useToast();
 
-  const todayStr = formatDate(getLogicalToday());
+  const today = getLogicalToday();
+  const yesterday = getLogicalYesterday();
+  const todayStr = formatDate(today);
+  const yesterdayStr = formatDate(yesterday);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [acts, cats, completions] = await Promise.all([
+    const [acts, cats, todayComps, yesterdayComps, datesMap] = await Promise.all([
       getAllActivities(),
       getCategories(),
       getDayCompletions(todayStr),
+      getDayCompletions(yesterdayStr),
+      getActivityCompletionDates(),
     ]);
+
     setActivities(acts);
     setCategories(cats);
-    setCompletedIds(new Set(completions.map((c) => c.activity_id)));
+    setTodayCompletedIds(new Set(todayComps.map((c) => c.activity_id)));
+    setYesterdayCompletedIds(new Set(yesterdayComps.map((c) => c.activity_id)));
+    setCompletionDatesMap(datesMap);
 
     const streakMap: Record<string, number> = {};
-    const today = getLogicalToday();
-    await Promise.all(
-      acts
-        .filter((a) => a.frequency === 'daily')
-        .map(async (act) => {
-          const history = await getCompletionsForActivity(act.id, 365);
-          streakMap[act.id] = calculateStreak(history.map((c) => c.completion_date), today);
-        })
-    );
+    acts.forEach((act) => {
+      if (act.frequency === 'daily') {
+        const history = datesMap[act.id] || [];
+        streakMap[act.id] = calculateStreak(history, today);
+      }
+    });
     setStreaks(streakMap);
     setLoading(false);
-  }, [todayStr]);
+  }, [todayStr, yesterdayStr]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   async function handleToggle(activityId: string, completed: boolean) {
-    const prev = new Set(completedIds);
-    if (completed) setCompletedIds((s) => new Set([...s, activityId]));
-    else setCompletedIds((s) => { const n = new Set(s); n.delete(activityId); return n; });
-    const ok = await toggleCompletion(activityId, todayStr, completed);
-    if (!ok) { setCompletedIds(prev); showToast('Failed to update', 'error'); }
+    const isToday = selectedDay === 'today';
+    const targetDateStr = isToday ? todayStr : yesterdayStr;
+    const prevToday = new Set(todayCompletedIds);
+    const prevYesterday = new Set(yesterdayCompletedIds);
+    const prevDatesMap = { ...completionDatesMap };
+
+    if (isToday) {
+      setTodayCompletedIds((s) => {
+        const n = new Set(s);
+        if (completed) n.add(activityId); else n.delete(activityId);
+        return n;
+      });
+    } else {
+      setYesterdayCompletedIds((s) => {
+        const n = new Set(s);
+        if (completed) n.add(activityId); else n.delete(activityId);
+        return n;
+      });
+    }
+
+    setCompletionDatesMap((prev) => {
+      const currentDates = prev[activityId] || [];
+      if (completed) {
+        return {
+          ...prev,
+          [activityId]: Array.from(new Set([...currentDates, targetDateStr])),
+        };
+      } else {
+        return {
+          ...prev,
+          [activityId]: currentDates.filter((d) => d !== targetDateStr),
+        };
+      }
+    });
+
+    const ok = await toggleCompletion(activityId, targetDateStr, completed);
+    if (!ok) {
+      if (isToday) setTodayCompletedIds(prevToday);
+      else setYesterdayCompletedIds(prevYesterday);
+      setCompletionDatesMap(prevDatesMap);
+      showToast('Failed to update', 'error');
+    } else {
+      showToast(
+        !isToday
+          ? (completed ? "Yesterday's task completed! 🎉" : "Yesterday's task marked incomplete")
+          : (completed ? 'Activity completed! 🎉' : 'Marked incomplete'),
+        completed ? 'success' : 'info'
+      );
+    }
   }
 
   async function handleSave(data: ActivityFormData) {
     if (editingActivity) {
       const updated = await updateActivity(editingActivity.id, {
-        title: data.title, description: data.description,
-        frequency: data.frequency, category_id: data.category_id || undefined,
-        target_count: data.target_count, start_date: data.start_date,
+        title: data.title,
+        description: data.description,
+        frequency: data.frequency,
+        category_id: data.category_id || undefined,
+        target_count: data.target_count,
+        start_date: data.start_date,
       });
       if (updated) {
-        setActivities((prev) => prev.map((a) => a.id === updated.id ? updated : a));
+        setActivities((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
         showToast('Activity updated', 'success');
       }
     } else {
       const created = await createActivity({
-        title: data.title, description: data.description,
-        frequency: data.frequency, category_id: data.category_id,
-        target_count: data.target_count, start_date: data.start_date,
+        title: data.title,
+        description: data.description,
+        frequency: data.frequency,
+        category_id: data.category_id,
+        target_count: data.target_count,
+        start_date: data.start_date,
       });
-      if (created) { setActivities((prev) => [created, ...prev]); showToast('Activity created!', 'success'); }
+      if (created) {
+        setActivities((prev) => [created, ...prev]);
+        showToast('Activity created!', 'success');
+      }
     }
-    setShowForm(false); setEditingActivity(null);
+    setShowForm(false);
+    setEditingActivity(null);
   }
 
   async function handleDelete() {
     if (!deletingActivity) return;
     setDeleteLoading(true);
     const ok = await deleteActivity(deletingActivity.id);
-    if (ok) { setActivities((prev) => prev.filter((a) => a.id !== deletingActivity.id)); showToast('Deleted', 'info'); }
-    else showToast('Failed to delete', 'error');
-    setDeleteLoading(false); setDeletingActivity(null);
+    if (ok) {
+      setActivities((prev) => prev.filter((a) => a.id !== deletingActivity.id));
+      showToast('Deleted', 'info');
+    } else {
+      showToast('Failed to delete', 'error');
+    }
+    setDeleteLoading(false);
+    setDeletingActivity(null);
   }
+
+  const activeCompletedIds = selectedDay === 'today' ? todayCompletedIds : yesterdayCompletedIds;
+  const activeDate = selectedDay === 'today' ? today : yesterday;
 
   const filtered = activities.filter((a) => {
     if (search && !a.title.toLowerCase().includes(search.toLowerCase())) return false;
     if (filter === 'daily') return a.frequency === 'daily';
     if (filter === 'weekly') return a.frequency === 'weekly';
     if (filter === 'monthly') return a.frequency === 'monthly';
-    if (filter === 'completed') return completedIds.has(a.id);
-    if (filter === 'pending') return !completedIds.has(a.id);
+    if (filter === 'completed') return activeCompletedIds.has(a.id);
+    if (filter === 'pending') return !activeCompletedIds.has(a.id);
     return true;
   });
 
@@ -140,12 +219,44 @@ export default function ActivitiesPage() {
       {/* Header */}
       <div className="bg-white px-5 pt-12 pb-4 border-b border-neutral-100">
         <div className="flex items-center justify-between mb-3">
-          <h1 className="text-xl font-bold text-neutral-800">Activities</h1>
+          <div>
+            <h1 className="text-xl font-bold text-neutral-800">Activities</h1>
+            <p className="text-xs text-neutral-400 mt-0.5">
+              Showing completion for {selectedDay === 'today' ? `Today (${formatShortDate(today)})` : `Yesterday (${formatShortDate(yesterday)})`}
+            </p>
+          </div>
           <button
             onClick={() => setShowSearch(!showSearch)}
+            aria-label="Search activities"
             className="p-2 rounded-xl hover:bg-neutral-100 text-neutral-500 transition-colors"
           >
             <Search size={20} />
+          </button>
+        </div>
+
+        {/* Day Selector Pill (Today vs Yesterday) */}
+        <div className="flex p-1 bg-neutral-100 rounded-xl mb-3">
+          <button
+            onClick={() => setSelectedDay('today')}
+            className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+              selectedDay === 'today'
+                ? 'bg-white text-neutral-800 shadow-sm'
+                : 'text-neutral-500 hover:text-neutral-800'
+            }`}
+          >
+            <span>☀️ Today</span>
+            <span className="text-[10px] opacity-70 font-normal">({formatShortDate(today)})</span>
+          </button>
+          <button
+            onClick={() => setSelectedDay('yesterday')}
+            className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+              selectedDay === 'yesterday'
+                ? 'bg-white text-neutral-800 shadow-sm'
+                : 'text-neutral-500 hover:text-neutral-800'
+            }`}
+          >
+            <span>⏳ Yesterday</span>
+            <span className="text-[10px] opacity-70 font-normal">({formatShortDate(yesterday)})</span>
           </button>
         </div>
 
@@ -158,7 +269,7 @@ export default function ActivitiesPage() {
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search activities..."
               autoFocus
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 bg-neutral-50"
+              className="w-full pl-9 pr-4 py-2 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 bg-neutral-50"
             />
           </div>
         )}
@@ -169,9 +280,9 @@ export default function ActivitiesPage() {
             <button
               key={f.value}
               onClick={() => setFilter(f.value)}
-              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
                 filter === f.value
-                  ? 'bg-primary-500 text-white'
+                  ? 'bg-primary-500 text-white shadow-sm'
                   : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
               }`}
             >
@@ -182,6 +293,15 @@ export default function ActivitiesPage() {
       </div>
 
       <div className="px-4 pt-4 space-y-5">
+        {selectedDay === 'yesterday' && (
+          <div className="bg-blue-50 border border-blue-200/90 rounded-2xl p-3 flex items-center gap-2.5 text-blue-900 animate-fade-in shadow-sm">
+            <Clock size={18} className="text-blue-500 flex-shrink-0" />
+            <p className="text-xs text-blue-800 font-medium leading-relaxed">
+              <strong>Catch-up Mode ({formatDisplayDate(yesterday)}):</strong> Modifying yesterday&apos;s completions. Only yesterday and today can be edited.
+            </p>
+          </div>
+        )}
+
         {loading ? (
           <SkeletonList count={5} />
         ) : filtered.length === 0 ? (
@@ -212,17 +332,28 @@ export default function ActivitiesPage() {
                     {cat?.icon} {catName}
                   </h2>
                   <div className="space-y-2">
-                    {acts.map((activity) => (
-                      <ActivityCard
-                        key={activity.id}
-                        activity={activity}
-                        completed={completedIds.has(activity.id)}
-                        streak={streaks[activity.id] ?? 0}
-                        onToggle={handleToggle}
-                        onEdit={(a) => { setEditingActivity(a); setShowForm(true); }}
-                        onDelete={setDeletingActivity}
-                      />
-                    ))}
+                    {acts.map((activity) => {
+                      const stats = getActivityStats(
+                        activity,
+                        completionDatesMap[activity.id] || [],
+                        activeDate
+                      );
+                      return (
+                        <ActivityCard
+                          key={activity.id}
+                          activity={activity}
+                          completed={activeCompletedIds.has(activity.id)}
+                          streak={streaks[activity.id] ?? 0}
+                          stats={stats}
+                          onToggle={handleToggle}
+                          onEdit={(a) => {
+                            setEditingActivity(a);
+                            setShowForm(true);
+                          }}
+                          onDelete={setDeletingActivity}
+                        />
+                      );
+                    })}
                   </div>
                 </section>
               );
@@ -237,17 +368,28 @@ export default function ActivitiesPage() {
                   </h2>
                 )}
                 <div className="space-y-2">
-                  {uncategorized.map((activity) => (
-                    <ActivityCard
-                      key={activity.id}
-                      activity={activity}
-                      completed={completedIds.has(activity.id)}
-                      streak={streaks[activity.id] ?? 0}
-                      onToggle={handleToggle}
-                      onEdit={(a) => { setEditingActivity(a); setShowForm(true); }}
-                      onDelete={setDeletingActivity}
-                    />
-                  ))}
+                  {uncategorized.map((activity) => {
+                    const stats = getActivityStats(
+                      activity,
+                      completionDatesMap[activity.id] || [],
+                      activeDate
+                    );
+                    return (
+                      <ActivityCard
+                        key={activity.id}
+                        activity={activity}
+                        completed={activeCompletedIds.has(activity.id)}
+                        streak={streaks[activity.id] ?? 0}
+                        stats={stats}
+                        onToggle={handleToggle}
+                        onEdit={(a) => {
+                          setEditingActivity(a);
+                          setShowForm(true);
+                        }}
+                        onDelete={setDeletingActivity}
+                      />
+                    );
+                  })}
                 </div>
               </section>
             )}
@@ -255,9 +397,12 @@ export default function ActivitiesPage() {
         )}
       </div>
 
-      {/* FAB */}
+      {/* Floating Action Button */}
       <button
-        onClick={() => { setEditingActivity(null); setShowForm(true); }}
+        onClick={() => {
+          setEditingActivity(null);
+          setShowForm(true);
+        }}
         id="activities-add-btn"
         className="fixed bottom-24 right-4 w-14 h-14 bg-primary-500 hover:bg-primary-600 text-white rounded-2xl shadow-lg shadow-primary-200 flex items-center justify-center transition-all duration-200 active:scale-90 z-30"
       >
@@ -271,7 +416,10 @@ export default function ActivitiesPage() {
           activity={editingActivity}
           categories={categories}
           onSave={handleSave}
-          onClose={() => { setShowForm(false); setEditingActivity(null); }}
+          onClose={() => {
+            setShowForm(false);
+            setEditingActivity(null);
+          }}
           onAddCategory={createCategory}
         />
       )}

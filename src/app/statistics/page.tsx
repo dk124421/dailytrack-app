@@ -12,7 +12,8 @@ import { PageLoader } from '@/components/LoadingState';
 import { createClient } from '@/lib/supabase/client';
 import {
   formatDate, formatMonthYear, getWeekDays, getMonthDays,
-  calculateStreak, startOfMonth, endOfMonth, startOfWeek, endOfWeek, format, getLogicalToday
+  calculateStreak, startOfMonth, endOfMonth, startOfWeek, endOfWeek, format, getLogicalToday,
+  getActivityStats,
 } from '@/lib/date-utils';
 import type { Activity, ActivityCompletion } from '@/lib/types';
 
@@ -138,6 +139,17 @@ export default function StatisticsPage() {
     if (catComps.length > 0) acc[catId].completed++;
     return acc;
   }, {});
+
+  // Task completion count (kitni bar performe huye)
+  const taskPerformance = activities.map((act) => {
+    const dates = allCompletions.filter((c) => c.activity_id === act.id).map((c) => c.completion_date);
+    const stats = getActivityStats(act, dates, today);
+    return {
+      activity: act,
+      timesPerformed: dates.length,
+      stats,
+    };
+  }).sort((a, b) => b.timesPerformed - a.timesPerformed);
 
   const statCards: StatCard[] = [
     { label: 'Today', value: `${todayPct}%`, sub: `${todayCompletions.length}/${dailyActs.length} done`, icon: '📅', color: 'from-blue-500 to-indigo-500' },
@@ -275,6 +287,62 @@ export default function StatisticsPage() {
                       <div
                         className="h-full bg-primary-400 rounded-full transition-all duration-700"
                         style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Task Performance (Kitni Bar Performe Huye) */}
+        {taskPerformance.length > 0 && (
+          <div className="card p-5 animate-fade-in">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-neutral-800">Task Performance</h3>
+                <p className="text-xs text-neutral-400 mt-0.5">Total times each task was completed</p>
+              </div>
+              <span className="text-xs font-semibold text-primary-600 bg-primary-50 px-2 py-0.5 rounded-full">
+                {activities.length} {activities.length === 1 ? 'task' : 'tasks'}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {taskPerformance.map((item, index) => {
+                const rankBadge = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`;
+                return (
+                  <div key={item.activity.id} className="p-3 rounded-xl bg-neutral-50/80 border border-neutral-100">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-xs font-bold text-neutral-500 w-5 text-center flex-shrink-0">
+                          {rankBadge}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-neutral-800 truncate">
+                            {item.activity.title}
+                          </p>
+                          {item.activity.category && (
+                            <p className="text-[11px] text-neutral-400 mt-0.5">
+                              {item.activity.category.icon} {item.activity.category.name}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                          <span>✓</span>
+                          <span>{item.stats.label}</span>
+                          <span className="text-[10px] text-emerald-600/80 font-semibold">({item.stats.percentage}%)</span>
+                        </span>
+                      </div>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="h-1.5 bg-neutral-200/60 rounded-full overflow-hidden mt-2">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-700"
+                        style={{ width: `${Math.min(100, Math.max(0, item.stats.percentage))}%` }}
                       />
                     </div>
                   </div>

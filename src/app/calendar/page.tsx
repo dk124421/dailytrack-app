@@ -7,7 +7,7 @@ import ActivityCheckbox from '@/components/ActivityCheckbox';
 import { PageLoader } from '@/components/LoadingState';
 import EmptyState from '@/components/EmptyState';
 import { createClient } from '@/lib/supabase/client';
-import { toggleCompletion } from '@/lib/api';
+import { toggleCompletion, getActivityCompletionDates } from '@/lib/api';
 import {
   formatDate,
   formatMonthYear,
@@ -21,6 +21,8 @@ import {
   addDays,
   subDays,
   getLogicalToday,
+  isDateModifiable,
+  getActivityStats,
 } from '@/lib/date-utils';
 import { addMonths, subMonths } from 'date-fns';
 import type { Activity, ActivityCompletion, DayStatus } from '@/lib/types';
@@ -51,6 +53,7 @@ export default function CalendarPage() {
   const [completions, setCompletions] = useState<ActivityCompletion[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dayActivities, setDayActivities] = useState<{ activity: Activity; completed: boolean }[]>([]);
+  const [completionDatesMap, setCompletionDatesMap] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [dayLoading, setDayLoading] = useState(false);
 
@@ -63,7 +66,7 @@ export default function CalendarPage() {
     const monthStart = formatDate(startOfMonth(currentMonth));
     const monthEnd = formatDate(endOfMonth(currentMonth));
 
-    const [actsRes, compRes] = await Promise.all([
+    const [actsRes, compRes, datesMap] = await Promise.all([
       supabase
         .from('activities')
         .select('*, category:categories(*)')
@@ -76,10 +79,12 @@ export default function CalendarPage() {
         .eq('completed', true)
         .gte('completion_date', monthStart)
         .lte('completion_date', monthEnd),
+      getActivityCompletionDates(),
     ]);
 
     setActivities(actsRes.data || []);
     setCompletions(compRes.data || []);
+    setCompletionDatesMap(datesMap);
     setLoading(false);
   }, [currentMonth]);
 
@@ -138,14 +143,32 @@ export default function CalendarPage() {
   }
 
   async function handleToggleDayActivity(activityId: string, completed: boolean) {
-    if (!selectedDate) return;
+    if (!selectedDate || !isDateModifiable(selectedDate)) return;
     const dateStr = formatDate(selectedDate);
-    await toggleCompletion(activityId, dateStr, completed);
+    const prevDayActivities = [...dayActivities];
+    const prevDatesMap = { ...completionDatesMap };
+    
+    // Optimistic update
     setDayActivities((prev) =>
       prev.map((da) =>
         da.activity.id === activityId ? { ...da, completed } : da
       )
     );
+    setCompletionDatesMap((prev) => {
+      const currentDates = prev[activityId] || [];
+      if (completed) {
+        return { ...prev, [activityId]: Array.from(new Set([...currentDates, dateStr])) };
+      } else {
+        return { ...prev, [activityId]: currentDates.filter((d) => d !== dateStr) };
+      }
+    });
+
+    const ok = await toggleCompletion(activityId, dateStr, completed);
+    if (!ok) {
+      setDayActivities(prevDayActivities);
+      setCompletionDatesMap(prevDatesMap);
+      return;
+    }
     // Refresh completions for the month indicator
     await loadData();
   }
@@ -248,60 +271,118 @@ export default function CalendarPage() {
       </div>
 
       {/* Day Detail Panel */}
-      {selectedDate && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={(e) => e.target === e.currentTarget && setSelectedDate(null)}>
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setSelectedDate(null)} />
-          <div className="relative bg-white rounded-t-3xl w-full max-w-[600px] max-h-[70vh] overflow-y-auto animate-slide-up z-10">
-            <div className="flex items-center justify-between p-5 border-b border-neutral-100">
-              <div>
-                <h3 className="text-base font-bold text-neutral-800">
-                  {format(selectedDate, 'EEEE, d MMMM')}
-                </h3>
-                {dayActivities.length > 0 && (
-                  <p className="text-sm text-neutral-500 mt-0.5">
-                    {dayActivities.filter((d) => d.completed).length} / {dayActivities.length} completed
-                  </p>
+      {selectedDate && (() => {
+        const canEdit = isDateModifiable(selectedDate);
+        return (
+          <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={(e) => e.target === e.currentTarget && setSelectedDate(null)}>
+            <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setSelectedDate(null)} />
+            <div className="relative bg-white rounded-t-3xl w-full max-w-[600px] max-h-[75vh] overflow-y-auto animate-slide-up z-10">
+              <div className="flex items-center justify-between p-5 border-b border-neutral-100">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-neutral-800">
+                      {format(selectedDate, 'EEEE, d MMMM')}
+                    </h3>
+                    {canEdit ? (
+                      <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                        ✏️ Editable
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-neutral-500 bg-neutral-100 border border-neutral-200/80 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                        🔒 Locked
+                      </span>
+                    )}
+                  </div>
+                  {dayActivities.length > 0 && (
+                    <p className="text-sm text-neutral-500 mt-0.5">
+                      {dayActivities.filter((d) => d.completed).length} / {dayActivities.length} completed
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setSelectedDate(null)}
+                  className="p-2 rounded-full hover:bg-neutral-100 text-neutral-500 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-4">
+                {!canEdit && (
+                  <div className="mb-3.5 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-neutral-600 flex items-center gap-2.5">
+                    <span className="text-base">🔒</span>
+                    <span>
+                      <strong>Locked date:</strong> Only today and yesterday can be modified if you missed ticking. Older days cannot be changed.
+                    </span>
+                  </div>
+                )}
+
+                {dayLoading ? (
+                  <PageLoader />
+                ) : dayActivities.length === 0 ? (
+                  <EmptyState type="calendar" />
+                ) : (
+                  <div className="space-y-2">
+                    {dayActivities.map(({ activity, completed }) => {
+                      const stats = getActivityStats(
+                        activity,
+                        completionDatesMap[activity.id] || [],
+                        selectedDate
+                      );
+                      return (
+                        <div key={activity.id} className="card p-4">
+                          <div className="flex items-center gap-3">
+                            <ActivityCheckbox
+                              checked={completed}
+                              disabled={!canEdit}
+                              onToggle={() => handleToggleDayActivity(activity.id, !completed)}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className={`font-semibold text-[15px] truncate ${completed ? 'text-neutral-400 line-through' : 'text-neutral-800'}`}>
+                                {activity.title}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                {activity.category && (
+                                  <span className="text-xs text-neutral-400">
+                                    {activity.category.icon} {activity.category.name}
+                                  </span>
+                                )}
+                                {activity.category && <span className="text-neutral-200">•</span>}
+                                <span
+                                  className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md inline-flex items-center gap-1"
+                                  title={`Completed ${stats.completed} out of ${stats.total} (${stats.percentage}%)`}
+                                >
+                                  <span>✓</span>
+                                  <span>{stats.label}</span>
+                                  <span className="text-[10px] text-emerald-600/80 font-semibold">({stats.percentage}%)</span>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          {/* Progress bar */}
+                          {stats.total > 0 && (
+                            <div className="mt-2.5 flex items-center gap-2 pl-9">
+                              <div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
+                                  style={{ width: `${Math.min(100, Math.max(0, stats.percentage))}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] font-bold text-neutral-400 min-w-[28px] text-right">
+                                {stats.percentage}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
-              <button
-                onClick={() => setSelectedDate(null)}
-                className="p-2 rounded-full hover:bg-neutral-100 text-neutral-500 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-4">
-              {dayLoading ? (
-                <PageLoader />
-              ) : dayActivities.length === 0 ? (
-                <EmptyState type="calendar" />
-              ) : (
-                <div className="space-y-2">
-                  {dayActivities.map(({ activity, completed }) => (
-                    <div key={activity.id} className="card p-4 flex items-center gap-3">
-                      <ActivityCheckbox
-                        checked={completed}
-                        onToggle={() => handleToggleDayActivity(activity.id, !completed)}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className={`font-semibold text-[15px] truncate ${completed ? 'text-neutral-400 line-through' : 'text-neutral-800'}`}>
-                          {activity.title}
-                        </p>
-                        {activity.category && (
-                          <p className="text-xs text-neutral-400 mt-0.5">
-                            {activity.category.icon} {activity.category.name}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <BottomNavigation />
     </div>

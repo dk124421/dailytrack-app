@@ -3,12 +3,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { MoreVertical, Edit, Trash2 } from 'lucide-react';
 import ActivityCheckbox from './ActivityCheckbox';
-import type { Activity } from '@/lib/types';
+import type { Activity, ActivityStats } from '@/lib/types';
 
 interface ActivityCardProps {
   activity: Activity;
   completed: boolean;
   streak: number;
+  completionCount?: number;
+  stats?: ActivityStats;
+  disabled?: boolean;
   onToggle: (activityId: string, completed: boolean) => void;
   onEdit: (activity: Activity) => void;
   onDelete: (activity: Activity) => void;
@@ -24,6 +27,9 @@ export default function ActivityCard({
   activity,
   completed,
   streak,
+  completionCount,
+  stats,
+  disabled = false,
   onToggle,
   onEdit,
   onDelete,
@@ -147,18 +153,20 @@ export default function ActivityCard({
       {!isShortTerm ? (
         <ActivityCheckbox
           checked={completed}
+          disabled={disabled}
           onToggle={() => onToggle(activity.id, !completed)}
         />
       ) : (
         <button
-          onClick={completed ? undefined : toggleTimer}
+          onClick={completed || disabled ? undefined : toggleTimer}
+          disabled={disabled}
           className={`w-14 h-14 flex-shrink-0 flex items-center justify-center rounded-xl font-bold text-xs transition-colors ${
             completed 
               ? 'bg-green-100 text-green-600'
               : isRunning 
                 ? 'bg-red-100 text-red-500 animate-pulse'
                 : 'bg-primary-100 text-primary-600'
-          }`}
+          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           {completed ? 'Done' : formatTime(timeLeft)}
         </button>
@@ -192,7 +200,46 @@ export default function ActivityCard({
               </span>
             </>
           )}
+          {stats ? (
+            <>
+              <span className="text-neutral-200">•</span>
+              <span
+                className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md inline-flex items-center gap-1"
+                title={`Completed ${stats.completed} out of ${stats.total} (${stats.percentage}%)`}
+              >
+                <span>✓</span>
+                <span>{stats.label}</span>
+                <span className="text-[10px] text-emerald-600/80 font-semibold">({stats.percentage}%)</span>
+              </span>
+            </>
+          ) : completionCount !== undefined ? (
+            <>
+              <span className="text-neutral-200">•</span>
+              <span
+                className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md inline-flex items-center gap-1"
+                title={`Task performed ${completionCount} times`}
+              >
+                <span>✓</span>
+                <span>{completionCount} {completionCount === 1 ? 'time' : 'times'} done</span>
+              </span>
+            </>
+          ) : null}
         </div>
+
+        {/* Mini progress bar for kitne mese kitni bar */}
+        {stats && stats.total > 0 && (
+          <div className="mt-2 flex items-center gap-2">
+            <div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, Math.max(0, stats.percentage))}%` }}
+              />
+            </div>
+            <span className="text-[10px] font-bold text-neutral-400 min-w-[28px] text-right">
+              {stats.percentage}%
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="relative" ref={menuRef}>
